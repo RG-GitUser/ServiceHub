@@ -11,12 +11,17 @@ interface User {
 
 interface Booking {
   $id: string
+  name: string
+  email: string
+  city?: string
+  age?: number
   serviceName: string
   serviceDescription: string
   servicePrice: number
-  serviceDuration: string
+  serviceDuration: number
   bookingDate: string
   bookingTime: string
+  consentForm: boolean
   userId: string
   createdAt: string
 }
@@ -32,7 +37,7 @@ interface AuthContextType {
   verifyEmail: (userId: string, secret: string) => Promise<{ success: boolean; error?: string }>
   resendVerification: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
   updateProfile: (name: string, email: string) => Promise<{ success: boolean; error?: string }>
-  createBooking: (serviceName: string, serviceDescription: string, servicePrice: number, serviceDuration: string, bookingDate: string, bookingTime: string) => Promise<{ success: boolean; error?: string }>
+  createBooking: (serviceName: string, serviceDescription: string, servicePrice: number, serviceDuration: number, bookingDate: string, bookingTime: string, consentForm: boolean, city?: string, age?: number) => Promise<{ success: boolean; error?: string }>
   getBookings: () => Promise<Booking[]>
   loading: boolean
 }
@@ -186,27 +191,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       // Save user data to "sh-users" collection in database
-      // Note: We don't store password - it's securely handled by Appwrite Auth
       const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
-      const collectionId = 'sh-users' // Collection ID as specified by user
+      const usersCollectionId = 'sh-users' // Users table collection ID
       
       if (databaseId) {
         try {
-          await databases.createDocument(
+          console.log('Saving user to Users table:', { databaseId, collectionId: usersCollectionId, name, email })
+          const result = await databases.createDocument(
             databaseId,
-            collectionId,
+            usersCollectionId,
             ID.unique(),
             {
-              Name: name || '',
-              Email: email,
-              // Password is NOT stored - handled securely by Appwrite Auth
+              name: name || '', // lowercase to match schema
+              email: email, // lowercase to match schema
+              // Note: Password is handled securely by Appwrite Auth and should NOT be stored in plain text
+              // If your Users table requires Password field, you may need to remove it or mark it as optional
             }
           )
+          console.log('User saved to Users table successfully:', result.$id)
         } catch (dbError: any) {
-          console.warn('Failed to save user to database:', dbError)
+          console.error('Failed to save user to Users table:', dbError)
+          console.error('Database error details:', {
+            message: dbError.message,
+            code: dbError.code,
+            type: dbError.type,
+            response: dbError.response
+          })
           // Don't fail signup if database save fails - account is still created
           // This allows the app to work even if database isn't configured
         }
+      } else {
+        console.warn('Database ID not configured. User data will not be saved to database.')
+        console.warn('Please add NEXT_PUBLIC_APPWRITE_DATABASE_ID to your .env.local file')
       }
       
       // Delete the temporary session (user needs to verify email before signing in)
@@ -370,9 +386,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     serviceName: string,
     serviceDescription: string,
     servicePrice: number,
-    serviceDuration: string,
+    serviceDuration: number,
     bookingDate: string,
-    bookingTime: string
+    bookingTime: string,
+    consentForm: boolean,
+    city?: string,
+    age?: number
   ) => {
     try {
       if (!user?.$id) {
@@ -380,32 +399,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
-      const collectionId = 'sh-users' // Using same collection for now, or create a separate bookings collection
+      const appointmentsCollectionId = 'appointments' // Appointments table collection ID
 
       if (!databaseId) {
         return { success: false, error: 'Database not configured' }
       }
 
+      // Get current user session to include user credentials
+      const session = await account.get()
+
+      // Convert bookingDate and bookingTime to datetime format
+      // Combine date and time into ISO datetime string
+      const bookingDateTime = new Date(`${bookingDate}T${bookingTime}:00`).toISOString()
+
+      console.log('Creating appointment with user credentials:', {
+        databaseId,
+        collectionId: appointmentsCollectionId,
+        userName: session.name || user.name,
+        userEmail: session.email || user.email,
+        userId: user.$id,
+        bookingDateTime
+      })
+
       await databases.createDocument(
         databaseId,
-        collectionId,
+        appointmentsCollectionId,
         ID.unique(),
         {
-          userId: user.$id,
+          // User credentials in Appointments table (lowercase to match schema)
+          name: session.name || user.name || '',
+          email: session.email || user.email,
+          city: city || null,
+          age: age ? parseInt(age.toString()) : null,
+          // Appointment details
           serviceName,
-          serviceDescription,
+          serviceDescription: serviceDescription || '',
           servicePrice,
-          serviceDuration,
-          bookingDate,
+          serviceDuration, // Integer (duration in minutes)
+          bookingDate: bookingDateTime, // Datetime format (ISO string)
           bookingTime,
-          createdAt: new Date().toISOString(),
-          type: 'booking', // To distinguish bookings from user records
+          consentForm, // Required boolean
         }
       )
 
+      console.log('Appointment created successfully')
       return { success: true }
     } catch (error: any) {
       console.error('Create booking error:', error)
+      console.error('Booking error details:', {
+        message: error.message,
+        code: error.code,
+        type: error.type,
+        response: error.response
+      })
       return { 
         success: false, 
         error: error.message || 'Failed to create booking' 
@@ -420,30 +466,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
-      const collectionId = 'sh-users'
+      const appointmentsCollectionId = 'appointments' // Appointments table collection ID
 
       if (!databaseId) {
         return []
       }
 
-      // Query bookings for this user
+      // Query appointments for this user
       const response = await databases.listDocuments(
         databaseId,
-        collectionId,
+        appointmentsCollectionId,
         [
-          `equal("userId", "${user.$id}")`,
-          `equal("type", "booking")`
+          `equal("userId", "${user.$id}")`
         ]
       )
 
       return response.documents.map((doc: any) => ({
         $id: doc.$id,
+        name: doc.name,
+        email: doc.email,
+        city: doc.city,
+        age: doc.age,
         serviceName: doc.serviceName,
         serviceDescription: doc.serviceDescription,
         servicePrice: doc.servicePrice,
         serviceDuration: doc.serviceDuration,
         bookingDate: doc.bookingDate,
         bookingTime: doc.bookingTime,
+        consentForm: doc.consentForm,
         userId: doc.userId,
         createdAt: doc.createdAt,
       }))

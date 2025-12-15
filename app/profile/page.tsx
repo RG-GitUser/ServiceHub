@@ -7,12 +7,17 @@ import { useAuth } from '@/contexts/AuthContext'
 
 interface Booking {
   $id: string
+  name: string
+  email: string
+  city?: string
+  age?: number
   serviceName: string
   serviceDescription: string
   servicePrice: number
-  serviceDuration: string
+  serviceDuration: number
   bookingDate: string
   bookingTime: string
+  consentForm: boolean
   userId: string
   createdAt: string
 }
@@ -56,21 +61,39 @@ export default function ProfilePage() {
   }
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    })
+    try {
+      const date = new Date(dateString)
+      return date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      })
+    } catch {
+      return dateString
+    }
   }
 
   const formatTime = (timeString: string) => {
     // Convert 24-hour format to 12-hour format
-    const [hours, minutes] = timeString.split(':')
-    const hour = parseInt(hours)
-    const ampm = hour >= 12 ? 'PM' : 'AM'
-    const displayHour = hour % 12 || 12
-    return `${displayHour}:${minutes} ${ampm}`
+    try {
+      const [hours, minutes] = timeString.split(':')
+      const hour = parseInt(hours)
+      const ampm = hour >= 12 ? 'PM' : 'AM'
+      const displayHour = hour % 12 || 12
+      return `${displayHour}:${minutes} ${ampm}`
+    } catch {
+      return timeString
+    }
+  }
+
+  const formatDuration = (minutes: number) => {
+    if (minutes < 60) {
+      return `${minutes} minutes`
+    } else {
+      const hours = Math.floor(minutes / 60)
+      const mins = minutes % 60
+      return mins > 0 ? `${hours} hour${hours > 1 ? 's' : ''} ${mins} minute${mins > 1 ? 's' : ''}` : `${hours} hour${hours > 1 ? 's' : ''}`
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -233,7 +256,7 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div>
                   <label className="block text-sm font-medium text-gray-500 mb-1">Full Name</label>
                   <p className="text-lg text-gray-900">{user.name || 'Not set'}</p>
@@ -246,6 +269,73 @@ export default function ProfilePage() {
                   <label className="block text-sm font-medium text-gray-500 mb-1">User ID</label>
                   <p className="text-sm text-gray-600 font-mono">{user.$id}</p>
                 </div>
+              </div>
+
+              {/* Booked Appointments Section */}
+              <div className="border-t border-gray-200 pt-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-4">My Booked Appointments</h3>
+                
+                {bookingsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    <p className="mt-2 text-gray-600">Loading appointments...</p>
+                  </div>
+                ) : bookings.length === 0 ? (
+                  <div className="text-center py-8 bg-gray-50 rounded-lg">
+                    <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-gray-600">No appointments booked yet</p>
+                    <Link
+                      href="/services"
+                      className="inline-block mt-4 text-primary-600 hover:text-primary-700 font-semibold"
+                    >
+                      Book a Service →
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {bookings.map((booking) => (
+                      <div
+                        key={booking.$id}
+                        className="bg-gray-50 rounded-lg p-6 border border-gray-200 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h4 className="text-lg font-semibold text-gray-900">{booking.serviceName}</h4>
+                            <p className="text-sm text-gray-600 mt-1">{booking.serviceDescription}</p>
+                          </div>
+                          <span className="text-lg font-bold text-primary-600">${booking.servicePrice}</span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
+                          <div>
+                            <span className="text-gray-500">Date:</span>
+                            <p className="text-gray-900 font-medium">{formatDate(booking.bookingDate)}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Time:</span>
+                            <p className="text-gray-900 font-medium">{formatTime(booking.bookingTime)}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Duration:</span>
+                            <p className="text-gray-900 font-medium">{formatDuration(booking.serviceDuration)}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Booked:</span>
+                            <p className="text-gray-900 font-medium">{formatDate(booking.createdAt)}</p>
+                          </div>
+                        </div>
+                        {(booking.city || booking.age) && (
+                          <div className="pt-3 border-t border-gray-200 text-sm">
+                            {booking.city && <span className="text-gray-600">City: <strong>{booking.city}</strong></span>}
+                            {booking.city && booking.age && <span className="mx-2">•</span>}
+                            {booking.age && <span className="text-gray-600">Age: <strong>{booking.age}</strong></span>}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -9,7 +9,8 @@ interface Service {
   id: number
   name: string
   description: string
-  duration: string
+  duration: string // Display format like "2 hours"
+  durationMinutes: number // Duration in minutes for database
   price: number
   category: string
   rating: number
@@ -21,6 +22,7 @@ const mockServices: Service[] = [
     name: 'Professional Photography',
     description: 'Professional photo shoot session for portraits, events, or product photography. Includes editing and high-resolution images.',
     duration: '2 hours',
+    durationMinutes: 120,
     price: 299,
     category: 'Photography',
     rating: 4.9,
@@ -30,6 +32,7 @@ const mockServices: Service[] = [
     name: 'Home Cleaning Service',
     description: 'Deep cleaning service for your home. Includes all rooms, kitchen, bathrooms, and common areas. Eco-friendly products used.',
     duration: '3-4 hours',
+    durationMinutes: 210, // Average 3.5 hours
     price: 149,
     category: 'Home Services',
     rating: 4.7,
@@ -39,6 +42,7 @@ const mockServices: Service[] = [
     name: 'Personal Training Session',
     description: 'One-on-one personal training session tailored to your fitness goals. Includes workout plan and nutrition advice.',
     duration: '1 hour',
+    durationMinutes: 60,
     price: 75,
     category: 'Fitness',
     rating: 4.8,
@@ -48,6 +52,7 @@ const mockServices: Service[] = [
     name: 'Web Development Consultation',
     description: 'Expert consultation for your web development needs. Includes code review, architecture planning, and best practices.',
     duration: '1.5 hours',
+    durationMinutes: 90,
     price: 199,
     category: 'Technology',
     rating: 5.0,
@@ -57,6 +62,7 @@ const mockServices: Service[] = [
     name: 'Massage Therapy',
     description: 'Relaxing full-body massage therapy session. Helps relieve stress, tension, and muscle soreness.',
     duration: '1 hour',
+    durationMinutes: 60,
     price: 89,
     category: 'Wellness',
     rating: 4.9,
@@ -66,6 +72,7 @@ const mockServices: Service[] = [
     name: 'Tutoring Session',
     description: 'Personalized tutoring session for students. Covers various subjects including math, science, and languages.',
     duration: '1 hour',
+    durationMinutes: 60,
     price: 50,
     category: 'Education',
     rating: 4.6,
@@ -79,6 +86,9 @@ export default function ServicesPage() {
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [bookingDate, setBookingDate] = useState('')
   const [bookingTime, setBookingTime] = useState('')
+  const [city, setCity] = useState('')
+  const [age, setAge] = useState('')
+  const [consentForm, setConsentForm] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -108,14 +118,22 @@ export default function ServicesPage() {
   }
 
   const handleConfirmBooking = async () => {
-    if (bookingDate && bookingTime && selectedService && createBooking) {
+    if (bookingDate && bookingTime && selectedService && createBooking && consentForm) {
+      if (!consentForm) {
+        alert('Please accept the consent form to proceed')
+        return
+      }
+
       const result = await createBooking(
         selectedService.name,
         selectedService.description,
         selectedService.price,
-        selectedService.duration,
+        selectedService.durationMinutes, // Use integer duration
         bookingDate,
-        bookingTime
+        bookingTime,
+        consentForm,
+        city || undefined,
+        age ? parseInt(age) : undefined
       )
 
       if (result.success) {
@@ -123,9 +141,14 @@ export default function ServicesPage() {
         setSelectedService(null)
         setBookingDate('')
         setBookingTime('')
+        setCity('')
+        setAge('')
+        setConsentForm(false)
       } else {
         alert(`Failed to create booking: ${result.error}`)
       }
+    } else if (!consentForm) {
+      alert('Please accept the consent form to proceed')
     }
   }
 
@@ -294,6 +317,50 @@ export default function ServicesPage() {
                   style={{ color: '#000000' }}
                 />
               </div>
+
+              <div>
+                <label htmlFor="city" className="block text-sm font-medium text-black mb-2">
+                  City (Optional)
+                </label>
+                <input
+                  type="text"
+                  id="city"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none text-black"
+                  placeholder="Enter your city"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="age" className="block text-sm font-medium text-black mb-2">
+                  Age (Optional, 18-80)
+                </label>
+                <input
+                  type="number"
+                  id="age"
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  min="18"
+                  max="80"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none text-black"
+                  placeholder="Enter your age"
+                />
+              </div>
+
+              <div className="flex items-start">
+                <input
+                  type="checkbox"
+                  id="consentForm"
+                  checked={consentForm}
+                  onChange={(e) => setConsentForm(e.target.checked)}
+                  className="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  required
+                />
+                <label htmlFor="consentForm" className="ml-3 text-sm text-black">
+                  I agree to the terms and conditions and consent to the service booking <span className="text-red-500">*</span>
+                </label>
+              </div>
             </div>
 
             <div className="flex gap-4">
@@ -305,7 +372,7 @@ export default function ServicesPage() {
               </button>
               <button
                 onClick={handleConfirmBooking}
-                disabled={!bookingDate || !bookingTime}
+                disabled={!bookingDate || !bookingTime || !consentForm}
                 className="flex-1 bg-primary-600 text-white py-3 rounded-lg font-semibold hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Confirm Booking
