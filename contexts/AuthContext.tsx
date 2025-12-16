@@ -194,7 +194,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
       const usersCollectionId = 'sh-users' // Users table collection ID
       
-      if (databaseId) {
+      // Validate that databaseId is not a collection ID (common mistake)
+      if (databaseId && (databaseId === 'sh-users' || databaseId === 'appointments')) {
+        console.error('Invalid Database ID: Collection ID used instead of Database ID')
+        console.error('Please get the Database ID from Appwrite Console → Databases → Your Database → Settings')
+        // Don't fail signup if database is misconfigured - account is still created
+      } else if (databaseId) {
         try {
           console.log('Saving user to Users table:', { databaseId, collectionId: usersCollectionId, name, email })
           const result = await databases.createDocument(
@@ -412,13 +417,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Combine date and time into ISO datetime string
       const bookingDateTime = new Date(`${bookingDate}T${bookingTime}:00`).toISOString()
 
+      // Truncate serviceName to 20 characters (database constraint)
+      const truncatedServiceName = serviceName.substring(0, 20)
+      // Truncate serviceDescription to 100 characters (database constraint)
+      const truncatedServiceDescription = (serviceDescription || '').substring(0, 100)
+
       console.log('Creating appointment with user credentials:', {
         databaseId,
         collectionId: appointmentsCollectionId,
         userName: session.name || user.name,
         userEmail: session.email || user.email,
         userId: user.$id,
-        bookingDateTime
+        bookingDateTime,
+        serviceName: truncatedServiceName,
+        serviceDescription: truncatedServiceDescription
       })
 
       await databases.createDocument(
@@ -432,8 +444,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           city: city || null,
           age: age ? parseInt(age.toString()) : null,
           // Appointment details
-          serviceName,
-          serviceDescription: serviceDescription || '',
+          serviceName: truncatedServiceName, // Truncated to 20 chars max (database constraint)
+          serviceDescription: truncatedServiceDescription, // Truncated to 100 chars max (database constraint)
           servicePrice,
           serviceDuration, // Integer (duration in minutes)
           bookingDate: bookingDateTime, // Datetime format (ISO string)
@@ -469,6 +481,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const appointmentsCollectionId = 'appointments' // Appointments table collection ID
 
       if (!databaseId) {
+        return []
+      }
+
+      // Validate that databaseId is not a collection ID (common mistake)
+      if (databaseId === 'sh-users' || databaseId === 'appointments') {
+        console.error('Invalid Database ID: Collection ID used instead of Database ID')
         return []
       }
 
