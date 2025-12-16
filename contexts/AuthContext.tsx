@@ -412,7 +412,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const appointmentsCollectionId = 'appointments' // Appointments table collection ID
 
       if (!databaseId) {
-        return { success: false, error: 'Database not configured' }
+        return { success: false, error: 'Database not configured (NEXT_PUBLIC_APPWRITE_DATABASE_ID)' }
       }
 
       // Get current user session to include user credentials
@@ -646,7 +646,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!user?.$id) return { success: false, error: 'User not logged in' }
       const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
       const appointmentsCollectionId = 'appointments'
-      if (!databaseId) return { success: false, error: 'Database not configured' }
+      if (!databaseId) return { success: false, error: 'Database not configured (NEXT_PUBLIC_APPWRITE_DATABASE_ID)' }
 
       const nowIso = new Date().toISOString()
       const candidates: Array<Record<string, any>> = [
@@ -687,7 +687,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!user?.$id) return { success: false, error: 'User not logged in' }
       const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
       const appointmentsCollectionId = 'appointments'
-      if (!databaseId) return { success: false, error: 'Database not configured' }
+      if (!databaseId) return { success: false, error: 'Database not configured (NEXT_PUBLIC_APPWRITE_DATABASE_ID)' }
 
       const requestedDateIso = new Date(`${newDate}T${newTime}:00`).toISOString()
       const nowIso = new Date().toISOString()
@@ -745,7 +745,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!user?.$id) return { success: false, error: 'User not logged in' }
       const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
       const appointmentsCollectionId = 'appointments'
-      if (!databaseId) return { success: false, error: 'Database not configured' }
+      if (!databaseId) return { success: false, error: 'Database not configured (NEXT_PUBLIC_APPWRITE_DATABASE_ID)' }
 
       await databases.deleteDocument(databaseId, appointmentsCollectionId, bookingId)
       return { success: true }
