@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
+import { Modal } from '@/components/Modal'
 
 interface Booking {
   $id: string
@@ -25,7 +26,7 @@ interface Booking {
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { user, loading, updateProfile, getBookings, signOut } = useAuth()
+  const { user, loading, updateProfile, getBookings, cancelBooking, requestReschedule, deleteBooking, signOut } = useAuth()
   const { getTotalItems } = useCart()
   const totalItems = getTotalItems()
   const [isEditing, setIsEditing] = useState(false)
@@ -35,6 +36,15 @@ export default function ProfilePage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [bookingsLoading, setBookingsLoading] = useState(true)
+  const [upcomingBookings, setUpcomingBookings] = useState<Booking[]>([])
+  const [actionOpen, setActionOpen] = useState(false)
+  const [actionType, setActionType] = useState<'cancel' | 'delete' | 'reschedule' | null>(null)
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null)
+  const [rescheduleDate, setRescheduleDate] = useState('')
+  const [rescheduleTime, setRescheduleTime] = useState('')
 
   useEffect(() => {
     if (!loading && !user) {
@@ -47,7 +57,7 @@ export default function ProfilePage() {
         loadBookings()
       }
     }
-  }, [user, loading, router])
+  }, [user, loading, router, getBookings])
 
   const loadBookings = async () => {
     if (getBookings) {
@@ -55,11 +65,79 @@ export default function ProfilePage() {
       try {
         const userBookings = await getBookings()
         setBookings(userBookings)
+
+        const now = new Date()
+        const upcoming = userBookings
+          .filter((b) => {
+            const d = new Date(b.bookingDate)
+            // Treat "today" bookings as upcoming even if timezone parsing is odd:
+            // show anything from the last 12 hours forward.
+            const twelveHoursMs = 12 * 60 * 60 * 1000
+            return !Number.isNaN(d.getTime()) && d.getTime() >= now.getTime() - twelveHoursMs
+          })
+          .sort((a, b) => new Date(a.bookingDate).getTime() - new Date(b.bookingDate).getTime())
+        setUpcomingBookings(upcoming)
       } catch (error) {
         console.error('Failed to load bookings:', error)
       } finally {
         setBookingsLoading(false)
       }
+    }
+  }
+
+  const openAction = (type: 'cancel' | 'delete' | 'reschedule', booking: Booking) => {
+    setActionError(null)
+    setActionSuccess(null)
+    setActionType(type)
+    setSelectedBooking(booking)
+    if (type === 'reschedule') {
+      try {
+        setRescheduleDate(new Date(booking.bookingDate).toISOString().slice(0, 10))
+      } catch {
+        setRescheduleDate('')
+      }
+      setRescheduleTime(booking.bookingTime || '')
+    }
+    setActionOpen(true)
+  }
+
+  const closeAction = () => {
+    if (actionLoading) return
+    setActionOpen(false)
+    setActionType(null)
+    setSelectedBooking(null)
+    setActionError(null)
+    setActionSuccess(null)
+  }
+
+  const confirmAction = async () => {
+    if (!selectedBooking || !actionType) return
+    setActionLoading(true)
+    setActionError(null)
+    setActionSuccess(null)
+    try {
+      if (actionType === 'cancel') {
+        const r = await cancelBooking(selectedBooking.$id)
+        if (!r.success) throw new Error(r.error || 'Failed to cancel')
+        setActionSuccess('Appointment cancelled.')
+      } else if (actionType === 'delete') {
+        const r = await deleteBooking(selectedBooking.$id)
+        if (!r.success) throw new Error(r.error || 'Failed to delete')
+        setActionSuccess('Appointment deleted.')
+      } else if (actionType === 'reschedule') {
+        if (!rescheduleDate || !rescheduleTime) {
+          throw new Error('Please choose a new date and time.')
+        }
+        const r = await requestReschedule(selectedBooking.$id, rescheduleDate, rescheduleTime)
+        if (!r.success) throw new Error(r.error || 'Failed to request reschedule')
+        setActionSuccess('Reschedule request submitted.')
+      }
+
+      await loadBookings()
+    } catch (e: any) {
+      setActionError(e?.message || 'Something went wrong')
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -134,15 +212,16 @@ export default function ProfilePage() {
       {/* Navigation */}
       <nav className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <Link href="/">
+          <div className="flex items-center h-16">
+            <div className="flex-1 flex items-center">
+              <Link href="/" className="flex items-center -ml-2">
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent">
                   ServiceHub
                 </h1>
               </Link>
             </div>
-            <div className="flex items-center space-x-4">
+
+            <div className="hidden md:flex flex-1 items-center justify-center space-x-4">
               <Link
                 href="/products"
                 className="text-gray-700 hover:text-primary-600 px-4 py-2 rounded-lg hover:bg-primary-50 transition-colors"
@@ -155,6 +234,24 @@ export default function ProfilePage() {
               >
                 Book Services
               </Link>
+            </div>
+
+            <div className="flex-1 flex items-center justify-end space-x-4 -mr-2">
+              <div className="flex items-center space-x-2 md:hidden">
+                <Link
+                  href="/products"
+                  className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-lg hover:bg-primary-50 transition-colors"
+                >
+                  Products
+                </Link>
+                <Link
+                  href="/services"
+                  className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-lg hover:bg-primary-50 transition-colors"
+                >
+                  Services
+                </Link>
+              </div>
+
               <Link
                 href="/profile"
                 className="text-primary-600 font-semibold px-4 py-2 rounded-lg bg-primary-50 transition-colors"
@@ -174,10 +271,10 @@ export default function ProfilePage() {
                   </span>
                 )}
               </Link>
-              <span className="text-gray-600">Welcome, {user.name || user.email}</span>
+              <span className="hidden lg:inline text-gray-600">Welcome, {user.name || user.email}</span>
               <button
                 onClick={signOut}
-                className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition-colors"
+                className="bg-primary-600 text-white h-11 px-3 rounded-lg hover:bg-primary-700 transition-colors flex items-center justify-center font-semibold"
               >
                 Sign Out
               </button>
@@ -294,21 +391,21 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              {/* Booked Appointments Section */}
+              {/* Upcoming Appointments Section */}
               <div className="border-t border-gray-200 pt-6">
-                <h3 className="text-xl font-bold text-gray-900 mb-4">My Booked Appointments</h3>
+                <h3 className="text-xl font-bold text-gray-900 mb-4">Upcoming Appointments</h3>
                 
                 {bookingsLoading ? (
                   <div className="text-center py-8">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
                     <p className="mt-2 text-gray-600">Loading appointments...</p>
                   </div>
-                ) : bookings.length === 0 ? (
+                ) : upcomingBookings.length === 0 ? (
                   <div className="text-center py-8 bg-gray-50 rounded-lg">
                     <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <p className="text-gray-600">No appointments booked yet</p>
+                    <p className="text-gray-600">No upcoming appointments</p>
                     <Link
                       href="/services"
                       className="inline-block mt-4 text-primary-600 hover:text-primary-700 font-semibold"
@@ -318,7 +415,7 @@ export default function ProfilePage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {bookings.map((booking) => (
+                    {upcomingBookings.map((booking) => (
                       <div
                         key={booking.$id}
                         className="bg-gray-50 rounded-lg p-6 border border-gray-200 hover:shadow-md transition-shadow"
@@ -355,6 +452,30 @@ export default function ProfilePage() {
                             {booking.age && <span className="text-gray-600">Age: <strong>{booking.age}</strong></span>}
                           </div>
                         )}
+
+                        <div className="mt-4 pt-4 border-t border-gray-200 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end">
+                          <button
+                            type="button"
+                            onClick={() => openAction('reschedule', booking)}
+                            className="h-11 px-4 rounded-lg border border-primary-200 text-primary-700 font-semibold hover:bg-primary-50 transition-colors flex items-center justify-center"
+                          >
+                            Request Reschedule
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openAction('cancel', booking)}
+                            className="h-11 px-4 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-100 transition-colors flex items-center justify-center"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openAction('delete', booking)}
+                            className="h-11 px-4 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors flex items-center justify-center"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -364,6 +485,99 @@ export default function ProfilePage() {
           )}
         </div>
       </main>
+
+      <Modal
+        open={actionOpen}
+        onClose={closeAction}
+        title={
+          actionType === 'cancel'
+            ? 'Cancel appointment'
+            : actionType === 'delete'
+              ? 'Delete appointment'
+              : 'Request reschedule'
+        }
+        description={
+          actionType === 'delete'
+            ? 'This permanently removes the appointment.'
+            : actionType === 'cancel'
+              ? 'This will mark the appointment as cancelled (if your schema supports it).'
+              : 'Choose a new date/time and we’ll store your request.'
+        }
+        maxWidthClassName="max-w-lg"
+        footer={
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={closeAction}
+              disabled={actionLoading}
+              className="flex-1 h-12 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={confirmAction}
+              disabled={actionLoading || (actionType === 'reschedule' && (!rescheduleDate || !rescheduleTime))}
+              className={`flex-1 h-12 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center ${
+                actionType === 'delete' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-primary-600 text-white hover:bg-primary-700'
+              }`}
+            >
+              {actionLoading
+                ? 'Working…'
+                : actionType === 'delete'
+                  ? 'Delete'
+                  : actionType === 'cancel'
+                    ? 'Cancel appointment'
+                    : 'Submit request'}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {selectedBooking && (
+            <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+              <div className="font-semibold text-gray-900">{selectedBooking.serviceName}</div>
+              <div className="text-sm text-gray-600 mt-1">
+                {formatDate(selectedBooking.bookingDate)} • {formatTime(selectedBooking.bookingTime)}
+              </div>
+            </div>
+          )}
+
+          {actionType === 'reschedule' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">New date</label>
+                <input
+                  type="date"
+                  value={rescheduleDate}
+                  onChange={(e) => setRescheduleDate(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none text-black [color-scheme:light]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">New time</label>
+                <input
+                  type="time"
+                  value={rescheduleTime}
+                  onChange={(e) => setRescheduleTime(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none text-black [color-scheme:light]"
+                />
+              </div>
+            </div>
+          )}
+
+          {(actionError || actionSuccess) && (
+            <div
+              className={`rounded-xl border p-4 ${
+                actionError ? 'border-red-200 bg-red-50 text-red-800' : 'border-green-200 bg-green-50 text-green-800'
+              }`}
+            >
+              <div className="font-semibold">{actionError ? 'Action failed' : 'Success'}</div>
+              <div className="text-sm mt-1">{actionError || actionSuccess}</div>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

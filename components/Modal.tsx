@@ -53,7 +53,7 @@ export function Modal({
           <div className="px-6 py-5 border-b border-gray-100">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                {title && <h2 className="text-2xl font-bold text-gray-900 truncate">{title}</h2>}
+                {title && <h2 className="text-2xl font-bold text-gray-900 leading-tight break-words">{title}</h2>}
                 {description && <p className="mt-1 text-sm text-gray-600">{description}</p>}
               </div>
               <button

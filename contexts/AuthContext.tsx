@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { client, account, databases, ID } from '@/lib/appwrite'
+import { Query } from 'appwrite'
 
 interface User {
   email: string
@@ -24,6 +25,7 @@ interface Booking {
   consentForm: boolean
   userId: string
   createdAt: string
+  status?: string
 }
 
 interface AuthContextType {
@@ -39,6 +41,9 @@ interface AuthContextType {
   updateProfile: (name: string, email: string) => Promise<{ success: boolean; error?: string }>
   createBooking: (serviceName: string, serviceDescription: string, servicePrice: number, serviceDuration: number, bookingDate: string, bookingTime: string, consentForm: boolean, city?: string, age?: number) => Promise<{ success: boolean; error?: string; emailSent?: boolean; emailError?: string }>
   getBookings: () => Promise<Booking[]>
+  cancelBooking: (bookingId: string) => Promise<{ success: boolean; error?: string }>
+  requestReschedule: (bookingId: string, newDate: string, newTime: string) => Promise<{ success: boolean; error?: string }>
+  deleteBooking: (bookingId: string) => Promise<{ success: boolean; error?: string }>
   loading: boolean
 }
 
@@ -417,8 +422,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Combine date and time into ISO datetime string
       const bookingDateTime = new Date(`${bookingDate}T${bookingTime}:00`).toISOString()
 
-      // Truncate serviceName to 20 characters (database constraint)
+      // Keep backwards compatibility with older schema constraints, but also store full titles when possible.
       const truncatedServiceName = serviceName.substring(0, 20)
+      const fullServiceName = (serviceName || '').substring(0, 100)
       // Truncate serviceDescription to 100 characters (database constraint)
       const truncatedServiceDescription = (serviceDescription || '').substring(0, 100)
 
@@ -433,26 +439,84 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         serviceDescription: truncatedServiceDescription
       })
 
-      await databases.createDocument(
-        databaseId,
-        appointmentsCollectionId,
-        ID.unique(),
-        {
-          // User credentials in Appointments table (lowercase to match schema)
-          name: session.name || user.name || '',
-          email: session.email || user.email,
-          city: city || null,
-          age: age ? parseInt(age.toString()) : null,
-          // Appointment details
-          serviceName: truncatedServiceName, // Truncated to 20 chars max (database constraint)
-          serviceDescription: truncatedServiceDescription, // Truncated to 100 chars max (database constraint)
-          servicePrice,
-          serviceDuration, // Integer (duration in minutes)
-          bookingDate: bookingDateTime, // Datetime format (ISO string)
-          bookingTime,
-          consentForm, // Required boolean
+      const basePayload: Record<string, any> = {
+        // User credentials in Appointments table (lowercase to match schema)
+        name: session.name || user.name || '',
+        email: session.email || user.email,
+        city: city || null,
+        age: age ? parseInt(age.toString()) : null,
+        // Appointment details
+        serviceName: truncatedServiceName, // Kept for compatibility with old schema
+        serviceNameFull: fullServiceName, // Prefer displaying this in UI when schema supports it
+        serviceDescription: truncatedServiceDescription, // Truncated to 100 chars max (database constraint)
+        servicePrice,
+        serviceDuration, // Integer (duration in minutes)
+        bookingDate: bookingDateTime, // Datetime format (ISO string)
+        bookingTime,
+        consentForm, // Required boolean
+        // If your schema requires this attribute, keep it present from day 1.
+        rescheduleRequested: false,
+      }
+
+      // Preferred: store userId + status so profile can query and actions can update reliably.
+      const fullPayload: Record<string, any> = {
+        ...basePayload,
+        userId: user.$id,
+        status: 'scheduled',
+      }
+
+      const tryCreate = async (payload: Record<string, any>) =>
+        await databases.createDocument(databaseId, appointmentsCollectionId, ID.unique(), payload)
+
+      try {
+        await tryCreate(fullPayload)
+      } catch (e: any) {
+        const msg = (e?.message || '').toLowerCase()
+
+        // If schema doesn't have serviceNameFull, drop it first.
+        if ((msg.includes('unknown attribute') || msg.includes('attribute not found in schema')) && msg.includes('servicenamefull')) {
+          const baseNoFullName = { ...basePayload }
+          delete (baseNoFullName as any).serviceNameFull
+          const fullNoFullName = { ...fullPayload }
+          delete (fullNoFullName as any).serviceNameFull
+
+          try {
+            await tryCreate(fullNoFullName)
+            return { success: true, emailSent: true }
+          } catch {
+            // continue to broader fallback below
+          }
+
+          // Replace basePayload/fullPayload for fallback logic
+          ;(basePayload as any).serviceNameFull = undefined
+          ;(fullPayload as any).serviceNameFull = undefined
         }
-      )
+
+        const unknownUserId =
+          (msg.includes('unknown attribute') || msg.includes('attribute not found in schema')) && msg.includes('userid')
+        const unknownStatus =
+          (msg.includes('unknown attribute') || msg.includes('attribute not found in schema')) && msg.includes('status')
+
+        // Retry by dropping only what the schema doesn't support.
+        const candidates: Array<Record<string, any>> = []
+        if (unknownUserId && !unknownStatus) candidates.push({ ...basePayload, status: 'scheduled' })
+        if (!unknownUserId && unknownStatus) candidates.push({ ...basePayload, userId: user.$id })
+        if (unknownUserId && unknownStatus) candidates.push(basePayload)
+        // If error wasn't about unknown fields, still try basePayload once before failing.
+        candidates.push(basePayload)
+
+        let lastErr: any = e
+        for (const c of candidates) {
+          try {
+            await tryCreate(c)
+            lastErr = null
+            break
+          } catch (e2: any) {
+            lastErr = e2
+          }
+        }
+        if (lastErr) throw lastErr
+      }
 
       console.log('Appointment created successfully')
       // Send booking confirmation email (server-side via SMTP route).
@@ -512,14 +576,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return []
       }
 
-      // Query appointments for this user
-      const response = await databases.listDocuments(
-        databaseId,
-        appointmentsCollectionId,
-        [
-          `equal("userId", "${user.$id}")`
-        ]
-      )
+      // Query appointments for this user.
+      // Appwrite Query.equal sometimes expects the value as an array; we try both.
+      // Prefer userId if available in schema; fall back to email if userId isn't present.
+      let response: any
+      const tryList = async (queries: any[]) =>
+        await databases.listDocuments(databaseId, appointmentsCollectionId, queries)
+
+      try {
+        response = await tryList([Query.equal('userId', user.$id as any), Query.orderAsc('bookingDate')])
+      } catch (e1: any) {
+        const msg1 = (e1?.message || '').toLowerCase()
+        const userIdMissing =
+          (msg1.includes('attribute not found in schema') || msg1.includes('unknown attribute')) &&
+          msg1.includes('userid')
+
+        if (userIdMissing) {
+          // Fall back to email-based query (some schemas use Email vs email; also try value array shape).
+          const emailQueries: any[] = [
+            Query.equal('email', user.email as any),
+            Query.equal('email', [user.email] as any),
+            Query.equal('Email', user.email as any),
+            Query.equal('Email', [user.email] as any),
+          ]
+
+          let lastErr: any = null
+          for (const q of emailQueries) {
+            try {
+              response = await tryList([q, Query.orderAsc('bookingDate')])
+              lastErr = null
+              break
+            } catch (eEmail: any) {
+              lastErr = eEmail
+            }
+          }
+
+          if (lastErr) throw lastErr
+        } else {
+          // userId exists; retry with array value shape
+          response = await tryList([Query.equal('userId', [user.$id] as any), Query.orderAsc('bookingDate')])
+        }
+      }
 
       return response.documents.map((doc: any) => ({
         $id: doc.$id,
@@ -527,15 +624,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: doc.email,
         city: doc.city,
         age: doc.age,
-        serviceName: doc.serviceName,
+        serviceName: doc.serviceNameFull || doc.serviceName,
         serviceDescription: doc.serviceDescription,
         servicePrice: doc.servicePrice,
         serviceDuration: doc.serviceDuration,
         bookingDate: doc.bookingDate,
         bookingTime: doc.bookingTime,
         consentForm: doc.consentForm,
-        userId: doc.userId,
-        createdAt: doc.createdAt,
+        userId: doc.userId || user.$id,
+        createdAt: doc.createdAt || doc.$createdAt,
+        status: doc.status || doc.Status || doc.appointmentStatus || doc.AppointmentStatus,
       }))
     } catch (error: any) {
       console.error('Get bookings error:', error)
@@ -543,8 +641,140 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const cancelBooking = async (bookingId: string) => {
+    try {
+      if (!user?.$id) return { success: false, error: 'User not logged in' }
+      const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
+      const appointmentsCollectionId = 'appointments'
+      if (!databaseId) return { success: false, error: 'Database not configured' }
+
+      const nowIso = new Date().toISOString()
+      const candidates: Array<Record<string, any>> = [
+        { status: 'cancelled', cancelledAt: nowIso, rescheduleRequested: false },
+        { status: 'canceled', cancelledAt: nowIso, rescheduleRequested: false },
+        { Status: 'cancelled', CancelledAt: nowIso, rescheduleRequested: false },
+        { cancelled: true, cancelledAt: nowIso, rescheduleRequested: false },
+        { cancelled: true, rescheduleRequested: false },
+      ]
+
+      let lastErr: any = null
+      for (const payload of candidates) {
+        try {
+          await databases.updateDocument(databaseId, appointmentsCollectionId, bookingId, payload)
+          return { success: true }
+        } catch (e: any) {
+          lastErr = e
+          const msg = (e?.message || '').toLowerCase()
+          // keep trying other shapes
+          if (msg.includes('unknown attribute') || msg.includes('attribute not found in schema')) continue
+          throw e
+        }
+      }
+
+      return {
+        success: false,
+        error:
+          lastErr?.message ||
+          'Unable to cancel: add a `status` (string) attribute to your appointments collection or relax schema.',
+      }
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Failed to cancel booking' }
+    }
+  }
+
+  const requestReschedule = async (bookingId: string, newDate: string, newTime: string) => {
+    try {
+      if (!user?.$id) return { success: false, error: 'User not logged in' }
+      const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
+      const appointmentsCollectionId = 'appointments'
+      if (!databaseId) return { success: false, error: 'Database not configured' }
+
+      const requestedDateIso = new Date(`${newDate}T${newTime}:00`).toISOString()
+      const nowIso = new Date().toISOString()
+
+      const candidates: Array<Record<string, any>> = [
+        {
+          status: 'reschedule_requested',
+          rescheduleRequested: true,
+          requestedBookingDate: requestedDateIso,
+          requestedBookingTime: newTime,
+          rescheduleRequestedAt: nowIso,
+        },
+        {
+          status: 'reschedule_requested',
+          rescheduleRequested: true,
+          RequestedBookingDate: requestedDateIso,
+          RequestedBookingTime: newTime,
+          RescheduleRequestedAt: nowIso,
+        },
+        {
+          status: 'reschedule_requested',
+          rescheduleRequested: true,
+          requestedDate: requestedDateIso,
+          requestedTime: newTime,
+        },
+        { status: 'reschedule_requested', rescheduleRequested: true },
+      ]
+
+      let lastErr: any = null
+      for (const payload of candidates) {
+        try {
+          await databases.updateDocument(databaseId, appointmentsCollectionId, bookingId, payload)
+          return { success: true }
+        } catch (e: any) {
+          lastErr = e
+          const msg = (e?.message || '').toLowerCase()
+          if (msg.includes('unknown attribute') || msg.includes('attribute not found in schema')) continue
+          throw e
+        }
+      }
+
+      return {
+        success: false,
+        error:
+          lastErr?.message ||
+          'Unable to request reschedule: add reschedule fields (e.g. `rescheduleRequested` boolean) to appointments schema.',
+      }
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Failed to request reschedule' }
+    }
+  }
+
+  const deleteBooking = async (bookingId: string) => {
+    try {
+      if (!user?.$id) return { success: false, error: 'User not logged in' }
+      const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
+      const appointmentsCollectionId = 'appointments'
+      if (!databaseId) return { success: false, error: 'Database not configured' }
+
+      await databases.deleteDocument(databaseId, appointmentsCollectionId, bookingId)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Failed to delete booking' }
+    }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, signIn, signUp, signInWithGoogle, signInWithFacebook, signOut, resetPassword, verifyEmail, resendVerification, updateProfile, createBooking, getBookings, loading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        signIn,
+        signUp,
+        signInWithGoogle,
+        signInWithFacebook,
+        signOut,
+        resetPassword,
+        verifyEmail,
+        resendVerification,
+        updateProfile,
+        createBooking,
+        getBookings,
+        cancelBooking,
+        requestReschedule,
+        deleteBooking,
+        loading,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
