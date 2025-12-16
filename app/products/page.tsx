@@ -4,71 +4,15 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-
-interface Product {
-  id: number
-  name: string
-  description: string
-  price: number
-  category: string
-  rating: number
-}
-
-const mockProducts: Product[] = [
-  {
-    id: 1,
-    name: 'Premium Wireless Headphones',
-    description: 'High-quality wireless headphones with noise cancellation and 30-hour battery life.',
-    price: 199.99,
-    category: 'Electronics',
-    rating: 4.8,
-  },
-  {
-    id: 2,
-    name: 'Smart Watch Pro',
-    description: 'Feature-rich smartwatch with health tracking, GPS, and water resistance.',
-    price: 299.99,
-    category: 'Electronics',
-    rating: 4.6,
-  },
-  {
-    id: 3,
-    name: 'Organic Coffee Beans',
-    description: 'Premium organic coffee beans sourced from sustainable farms. 1kg pack.',
-    price: 24.99,
-    category: 'Food & Beverage',
-    rating: 4.9,
-  },
-  {
-    id: 4,
-    name: 'Yoga Mat Premium',
-    description: 'Eco-friendly yoga mat with superior grip and cushioning. Perfect for all yoga styles.',
-    price: 49.99,
-    category: 'Fitness',
-    rating: 4.7,
-  },
-  {
-    id: 5,
-    name: 'Leather Backpack',
-    description: 'Handcrafted genuine leather backpack with laptop compartment and multiple pockets.',
-    price: 149.99,
-    category: 'Fashion',
-    rating: 4.5,
-  },
-  {
-    id: 6,
-    name: 'Skincare Set',
-    description: 'Complete skincare routine set with cleanser, toner, serum, and moisturizer.',
-    price: 79.99,
-    category: 'Beauty',
-    rating: 4.8,
-  },
-]
+import { useCart } from '@/contexts/CartContext'
+import { products as mockProducts } from '@/lib/products'
 
 export default function ProductsPage() {
   const router = useRouter()
   const { user, signOut, loading } = useAuth()
+  const { addToCart, getTotalItems } = useCart()
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
+  const totalItems = getTotalItems()
 
   useEffect(() => {
     if (!loading && !user) {
@@ -122,6 +66,19 @@ export default function ProductsPage() {
                 className="text-gray-700 hover:text-primary-600 px-4 py-2 rounded-lg hover:bg-primary-50 transition-colors"
               >
                 Profile
+              </Link>
+              <Link
+                href="/cart"
+                className="relative text-gray-700 hover:text-primary-600 px-4 py-2 rounded-lg hover:bg-primary-50 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                {totalItems > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {totalItems}
+                  </span>
+                )}
               </Link>
               <span className="text-gray-600">Welcome, {user.name || user.email}</span>
               <button
@@ -190,7 +147,21 @@ export default function ProductsPage() {
                   </div>
                   <div className="text-2xl font-bold text-primary-600">${product.price.toFixed(2)}</div>
                 </div>
-                <button className="w-full mt-4 bg-primary-600 text-white py-3 rounded-lg font-semibold hover:bg-primary-700 transition-colors">
+                <button 
+                  onClick={(e) => {
+                    addToCart(product)
+                    // Show a brief visual feedback
+                    const button = e.currentTarget
+                    const originalText = button.textContent
+                    button.textContent = 'Added!'
+                    button.classList.add('bg-green-600')
+                    setTimeout(() => {
+                      button.textContent = originalText
+                      button.classList.remove('bg-green-600')
+                    }, 1000)
+                  }}
+                  className="w-full mt-4 h-12 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors flex items-center justify-center"
+                >
                   Add to Cart
                 </button>
               </div>

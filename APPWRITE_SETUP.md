@@ -120,3 +120,57 @@ Once Appwrite is set up, you can:
 
 For more information, visit the [Appwrite Documentation](https://appwrite.io/docs).
 
+## (Optional) Step 8: Purchases + Items Collections (Ecommerce)
+
+If you created the `Purchases` and `Items` collections and want checkout to write documents, add these to your `.env.local`:
+
+```env
+NEXT_PUBLIC_APPWRITE_DATABASE_ID=your_database_id_here
+NEXT_PUBLIC_APPWRITE_PURCHASES_COLLECTION_ID=sh-purchases
+NEXT_PUBLIC_APPWRITE_ITEMS_COLLECTION_ID=sh-items
+NEXT_PUBLIC_APPWRITE_USERS_COLLECTION_ID=sh-users
+```
+
+### Recommended schema to align purchases with the signed-in user
+
+- **Purchases** (Collection ID: `Purchases`)
+  - **Required attributes**
+    - `purchaseDate` (Datetime, required)
+    - `purchaseType` (String, size 50, required) — we store the product category here
+    - `item` (String, size 50, required) — we store the product name here (trimmed to 50)
+  - **Recommended attributes**
+    - `userId` (String, required) — set this to the Appwrite Auth user `$id` so you can query purchases per user
+    - `userEmail` (String, optional/recommended) — set this to the signed-in user’s email for easier debugging/testing
+  - **Permissions**
+    - Allow authenticated users to **Create** documents
+    - If you add `userId`, you can also restrict reads to `userId == user.$id`
+
+- **Items** (Collection ID: `Items`)
+  - **Required attributes**
+    - `itemName` (String, size 100, required)
+    - `itemID` (Integer, required)
+    - `itemType` (String, size 100, required) — we store the same value as `purchaseType` (category)
+
+> Important: In Appwrite, Integer min/max is a numeric range. If your `itemID` is configured with `min: 3` and `max: 5`, only values 3–5 will be accepted. The sample products in this app have IDs 1–6, so you’ll want to change that range (or change `itemID` to a string).
+
+## (Optional) Sending purchase/booking emails via SMTP (Namecrane)
+
+This repo can send purchase + booking confirmation emails via a Next.js server route using your mailbox SMTP (e.g. Namecrane).
+
+Add these **server-only** env vars (DO NOT prefix with `NEXT_PUBLIC_`):
+
+```env
+SMTP_HOST=mail.wabanakisoftwaresolutions.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=noreply.servicehub@wabanakisoftwaresolutions.com
+SMTP_PASS=your_mailbox_password_here
+SMTP_FROM=noreply.servicehub@wabanakisoftwaresolutions.com
+```
+
+Then checkout will:
+- Save purchases/items to Appwrite
+- Send an email to the signed-in user’s email address
+
+Note: the mailbox you use must be allowed to send as `noreply.servicehub@wabanakisoftwaresolutions.com`.
+

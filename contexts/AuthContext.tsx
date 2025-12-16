@@ -37,7 +37,7 @@ interface AuthContextType {
   verifyEmail: (userId: string, secret: string) => Promise<{ success: boolean; error?: string }>
   resendVerification: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
   updateProfile: (name: string, email: string) => Promise<{ success: boolean; error?: string }>
-  createBooking: (serviceName: string, serviceDescription: string, servicePrice: number, serviceDuration: number, bookingDate: string, bookingTime: string, consentForm: boolean, city?: string, age?: number) => Promise<{ success: boolean; error?: string }>
+  createBooking: (serviceName: string, serviceDescription: string, servicePrice: number, serviceDuration: number, bookingDate: string, bookingTime: string, consentForm: boolean, city?: string, age?: number) => Promise<{ success: boolean; error?: string; emailSent?: boolean; emailError?: string }>
   getBookings: () => Promise<Booking[]>
   loading: boolean
 }
@@ -455,7 +455,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       )
 
       console.log('Appointment created successfully')
-      return { success: true }
+      // Send booking confirmation email (server-side via SMTP route).
+      try {
+        const resp = await fetch('/api/booking-confirmation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: session.email || user.email,
+            userName: session.name || user.name,
+            serviceName: truncatedServiceName,
+            bookingDateIso: bookingDateTime,
+            bookingTime,
+            servicePrice,
+            serviceDurationMinutes: serviceDuration,
+          }),
+        })
+        const data = await resp.json().catch(() => ({}))
+        if (!resp.ok) {
+          return { success: true, emailSent: false, emailError: data?.error || 'Failed to send email' }
+        }
+        return { success: true, emailSent: true }
+      } catch (e: any) {
+        return { success: true, emailSent: false, emailError: e?.message || 'Failed to send email' }
+      }
     } catch (error: any) {
       console.error('Create booking error:', error)
       console.error('Booking error details:', {
