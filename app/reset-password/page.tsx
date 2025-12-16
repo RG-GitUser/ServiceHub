@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { account } from '@/lib/appwrite'
@@ -18,7 +18,7 @@ const resetPasswordSchema = z.object({
 
 type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>
 
-export default function ResetPasswordPage() {
+function ResetPasswordInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [error, setError] = useState<string>('')
@@ -166,6 +166,14 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense>
+      <ResetPasswordInner />
+    </Suspense>
   )
 }
 

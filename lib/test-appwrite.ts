@@ -1,5 +1,5 @@
 // Test utility to verify Appwrite connection
-import client, { account } from './appwrite'
+import { client, account } from './appwrite'
 
 export async function testAppwriteConnection() {
   try {

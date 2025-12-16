@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 
-export default function VerifyEmailPage() {
+function VerifyEmailInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { verifyEmail } = useAuth()
@@ -145,6 +145,14 @@ export default function VerifyEmailPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense>
+      <VerifyEmailInner />
+    </Suspense>
   )
 }
 

@@ -53,35 +53,31 @@ export default function ProfilePage() {
       setName(user.name || '')
       setEmail(user.email || '')
       // Load bookings
-      if (getBookings) {
-        loadBookings()
-      }
+      loadBookings()
     }
   }, [user, loading, router, getBookings])
 
   const loadBookings = async () => {
-    if (getBookings) {
-      setBookingsLoading(true)
-      try {
-        const userBookings = await getBookings()
-        setBookings(userBookings)
+    setBookingsLoading(true)
+    try {
+      const userBookings = await getBookings()
+      setBookings(userBookings)
 
-        const now = new Date()
-        const upcoming = userBookings
-          .filter((b) => {
-            const d = new Date(b.bookingDate)
-            // Treat "today" bookings as upcoming even if timezone parsing is odd:
-            // show anything from the last 12 hours forward.
-            const twelveHoursMs = 12 * 60 * 60 * 1000
-            return !Number.isNaN(d.getTime()) && d.getTime() >= now.getTime() - twelveHoursMs
-          })
-          .sort((a, b) => new Date(a.bookingDate).getTime() - new Date(b.bookingDate).getTime())
-        setUpcomingBookings(upcoming)
-      } catch (error) {
-        console.error('Failed to load bookings:', error)
-      } finally {
-        setBookingsLoading(false)
-      }
+      const now = new Date()
+      const upcoming = userBookings
+        .filter((b) => {
+          const d = new Date(b.bookingDate)
+          // Treat "today" bookings as upcoming even if timezone parsing is odd:
+          // show anything from the last 12 hours forward.
+          const twelveHoursMs = 12 * 60 * 60 * 1000
+          return !Number.isNaN(d.getTime()) && d.getTime() >= now.getTime() - twelveHoursMs
+        })
+        .sort((a, b) => new Date(a.bookingDate).getTime() - new Date(b.bookingDate).getTime())
+      setUpcomingBookings(upcoming)
+    } catch (error) {
+      console.error('Failed to load bookings:', error)
+    } finally {
+      setBookingsLoading(false)
     }
   }
 
@@ -236,7 +232,7 @@ export default function ProfilePage() {
               </Link>
             </div>
 
-            <div className="flex-1 flex items-center justify-end space-x-4 -mr-2">
+            <div className="flex-1 flex items-center justify-end space-x-4 -mr-2 flex-nowrap">
               <div className="flex items-center space-x-2 md:hidden">
                 <Link
                   href="/products"
@@ -274,7 +270,7 @@ export default function ProfilePage() {
               <span className="hidden lg:inline text-gray-600">Welcome, {user.name || user.email}</span>
               <button
                 onClick={signOut}
-                className="bg-primary-600 text-white h-11 px-3 rounded-lg hover:bg-primary-700 transition-colors flex items-center justify-center font-semibold"
+                className="bg-primary-600 text-white h-11 px-3 rounded-lg hover:bg-primary-700 transition-colors flex items-center justify-center font-semibold whitespace-nowrap"
               >
                 Sign Out
               </button>

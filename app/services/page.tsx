@@ -191,7 +191,7 @@ export default function ServicesPage() {
               </Link>
             </div>
 
-            <div className="flex-1 flex items-center justify-end space-x-4 -mr-2">
+            <div className="flex-1 flex items-center justify-end space-x-4 -mr-2 flex-nowrap">
               <div className="flex items-center space-x-2 md:hidden">
                 <Link
                   href="/products"
@@ -229,7 +229,7 @@ export default function ServicesPage() {
               <span className="hidden lg:inline text-gray-600">Welcome, {user.name || user.email}</span>
               <button
                 onClick={signOut}
-                className="bg-primary-600 text-white h-11 px-3 rounded-lg hover:bg-primary-700 transition-colors flex items-center justify-center font-semibold"
+                className="bg-primary-600 text-white h-11 px-3 rounded-lg hover:bg-primary-700 transition-colors flex items-center justify-center font-semibold whitespace-nowrap"
               >
                 Sign Out
               </button>
