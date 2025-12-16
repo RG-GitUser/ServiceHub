@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
+import { Modal } from '@/components/Modal'
 
 interface Service {
   id: number
@@ -244,7 +245,7 @@ export default function ServicesPage() {
           {filteredServices.map((service) => (
             <div
               key={service.id}
-              className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] overflow-hidden"
+              className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] overflow-hidden flex flex-col"
             >
               <div className="aspect-video bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center">
                 <div className="text-center p-8">
@@ -256,9 +257,9 @@ export default function ServicesPage() {
                   <p className="text-sm text-gray-500">Service Image</p>
                 </div>
               </div>
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-xl font-bold text-gray-900">{service.name}</h3>
+              <div className="p-6 flex flex-col flex-1">
+                <div className="flex items-start justify-between mb-2 min-w-0">
+                  <h3 className="text-xl font-bold text-gray-900 truncate pr-2">{service.name}</h3>
                   <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">{service.category}</span>
                 </div>
                 <p className="text-gray-600 mb-4 line-clamp-2">{service.description}</p>
@@ -274,12 +275,14 @@ export default function ServicesPage() {
                   </div>
                   <div className="text-2xl font-bold text-primary-600">${service.price}</div>
                 </div>
-                <button
-                  onClick={() => handleBookService(service)}
-                  className="w-full h-12 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors flex items-center justify-center"
-                >
-                  Book Now
-                </button>
+                <div className="mt-auto pt-4">
+                  <button
+                    onClick={() => handleBookService(service)}
+                    className="w-full h-12 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors flex items-center justify-center"
+                  >
+                    Book Now
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -287,22 +290,34 @@ export default function ServicesPage() {
       </main>
 
       {/* Booking Modal */}
-      {selectedService && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Book {selectedService.name}</h2>
-              <button
-                onClick={() => setSelectedService(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-4 mb-6">
+      <Modal
+        open={!!selectedService}
+        onClose={() => setSelectedService(null)}
+        title={selectedService ? `Book ${selectedService.name}` : 'Book service'}
+        description="Choose a date/time and confirm your booking."
+        maxWidthClassName="max-w-md"
+        footer={
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={() => setSelectedService(null)}
+              className="flex-1 h-12 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmBooking}
+              disabled={!bookingDate || !bookingTime || !consentForm}
+              className="flex-1 h-12 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              Confirm Booking
+            </button>
+          </div>
+        }
+      >
+        {selectedService && (
+          <div className="space-y-4">
               <div>
                 <p className="text-black mb-2">{selectedService.description}</p>
                 <div className="flex items-center justify-between text-sm text-black">
@@ -383,26 +398,9 @@ export default function ServicesPage() {
                   I agree to the terms and conditions and consent to the service booking <span className="text-red-500">*</span>
                 </label>
               </div>
-            </div>
-
-            <div className="flex gap-4">
-              <button
-                onClick={() => setSelectedService(null)}
-                className="flex-1 h-12 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmBooking}
-                disabled={!bookingDate || !bookingTime || !consentForm}
-                className="flex-1 h-12 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-              >
-                Confirm Booking
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   )
 }

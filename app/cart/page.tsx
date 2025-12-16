@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { checkoutCartToAppwrite } from '@/lib/purchases'
+import { Modal } from '@/components/Modal'
 
 export default function CartPage() {
   const router = useRouter()
@@ -15,6 +16,7 @@ export default function CartPage() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [checkoutSuccess, setCheckoutSuccess] = useState<string | null>(null)
   const [emailStatus, setEmailStatus] = useState<string | null>(null)
+  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -59,6 +61,7 @@ export default function CartPage() {
         items,
       })
       clearCart()
+      setCheckoutModalOpen(false)
       const savedCount = items.reduce((n, it) => n + Math.max(1, it.quantity || 1), 0)
       setCheckoutSuccess(
         `Saved ${savedCount} purchase${savedCount === 1 ? '' : 's'} (${new Date(
@@ -300,7 +303,7 @@ export default function CartPage() {
                       ? 'bg-gray-300 text-gray-700 cursor-not-allowed'
                       : 'bg-primary-600 text-white hover:bg-primary-700'
                   }`}
-                  onClick={handleCheckout}
+                  onClick={() => setCheckoutModalOpen(true)}
                   disabled={checkoutLoading}
                 >
                   {checkoutLoading ? 'Processing…' : 'Proceed to Checkout'}
@@ -316,6 +319,78 @@ export default function CartPage() {
           </div>
         )}
       </main>
+
+      <Modal
+        open={checkoutModalOpen}
+        onClose={() => (checkoutLoading ? null : setCheckoutModalOpen(false))}
+        title="Confirm purchase"
+        description="This is a demo checkout (no real payment processed). We’ll save your purchases and email you a receipt."
+        maxWidthClassName="max-w-xl"
+        footer={
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={() => setCheckoutModalOpen(false)}
+              disabled={checkoutLoading}
+              className="flex-1 h-12 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleCheckout}
+              disabled={checkoutLoading}
+              className="flex-1 h-12 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              {checkoutLoading ? 'Placing order…' : 'Place order'}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+            <div className="flex justify-between text-sm text-gray-700">
+              <span>Subtotal</span>
+              <span className="font-semibold">${subtotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-gray-700 mt-2">
+              <span>Tax</span>
+              <span className="font-semibold">${(subtotal * 0.1).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-base text-gray-900 mt-3 pt-3 border-t border-gray-200">
+              <span className="font-bold">Total</span>
+              <span className="font-bold text-primary-700">${totalWithTax.toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 p-4">
+            <div className="font-semibold text-gray-900">Items ({totalItems})</div>
+            <div className="mt-3 space-y-2">
+              {items.map((it) => (
+                <div key={it.id} className="flex items-center justify-between gap-4 text-sm">
+                  <div className="min-w-0">
+                    <div className="font-medium text-gray-900 truncate">{it.name}</div>
+                    <div className="text-gray-500">{it.category} • qty {it.quantity}</div>
+                  </div>
+                  <div className="font-semibold text-gray-900">${(it.price * it.quantity).toFixed(2)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {(checkoutError || checkoutSuccess || emailStatus) && (
+            <div
+              className={`rounded-xl border p-4 ${
+                checkoutError ? 'border-red-200 bg-red-50 text-red-800' : 'border-green-200 bg-green-50 text-green-800'
+              }`}
+            >
+              <div className="font-semibold">{checkoutError ? 'Checkout error' : 'Checkout status'}</div>
+              <div className="text-sm mt-1">{checkoutError || checkoutSuccess || emailStatus}</div>
+              {!checkoutError && emailStatus && <div className="text-sm mt-1">{emailStatus}</div>}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

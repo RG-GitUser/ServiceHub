@@ -120,7 +120,7 @@ export default function ProductsPage() {
           {filteredProducts.map((product) => (
             <div
               key={product.id}
-              className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] overflow-hidden"
+              className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] overflow-hidden flex flex-col"
             >
               <div className="aspect-square bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center">
                 <div className="text-center p-8">
@@ -132,9 +132,9 @@ export default function ProductsPage() {
                   <p className="text-sm text-gray-500">Product Image</p>
                 </div>
               </div>
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-xl font-bold text-gray-900">{product.name}</h3>
+              <div className="p-6 flex flex-col flex-1">
+                <div className="flex items-start justify-between mb-2 min-w-0">
+                  <h3 className="text-xl font-bold text-gray-900 truncate pr-2">{product.name}</h3>
                   <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">{product.category}</span>
                 </div>
                 <p className="text-gray-600 mb-4 line-clamp-2">{product.description}</p>
@@ -147,23 +147,25 @@ export default function ProductsPage() {
                   </div>
                   <div className="text-2xl font-bold text-primary-600">${product.price.toFixed(2)}</div>
                 </div>
-                <button 
-                  onClick={(e) => {
-                    addToCart(product)
-                    // Show a brief visual feedback
-                    const button = e.currentTarget
-                    const originalText = button.textContent
-                    button.textContent = 'Added!'
-                    button.classList.add('bg-green-600')
-                    setTimeout(() => {
-                      button.textContent = originalText
-                      button.classList.remove('bg-green-600')
-                    }, 1000)
-                  }}
-                  className="w-full mt-4 h-12 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors flex items-center justify-center"
-                >
-                  Add to Cart
-                </button>
+                <div className="mt-auto pt-4">
+                  <button 
+                    onClick={(e) => {
+                      addToCart(product)
+                      // Show a brief visual feedback
+                      const button = e.currentTarget
+                      const originalText = button.textContent
+                      button.textContent = 'Added!'
+                      button.classList.add('bg-green-600')
+                      setTimeout(() => {
+                        button.textContent = originalText
+                        button.classList.remove('bg-green-600')
+                      }, 1000)
+                    }}
+                    className="w-full h-12 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors flex items-center justify-center"
+                  >
+                    Add to Cart
+                  </button>
+                </div>
               </div>
             </div>
           ))}
