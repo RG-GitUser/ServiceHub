@@ -175,6 +175,7 @@ async function createPurchaseDocument(params: {
   purchaseDateIso: string
   userId?: string
   userEmail?: string
+  userName?: string
 }) {
   const { databaseId, purchasesCollectionId } = getDbConfig()
   if (!databaseId) {
@@ -183,6 +184,8 @@ async function createPurchaseDocument(params: {
 
   const purchaseType = truncate(params.cartItem.category, 50)
   const item = truncate(params.cartItem.name, 50)
+  const emailPrefix = (params.userEmail || '').split('@')[0] || ''
+  const userNameToUse = truncate((params.userName || emailPrefix || 'Customer').trim(), 50)
 
   // User-aligned payload: include userEmail/userId if your Purchases collection has them.
   const payloadWithUser: Record<string, any> = {
@@ -190,6 +193,8 @@ async function createPurchaseDocument(params: {
     purchaseType,
     item,
     ...(params.userEmail ? { userEmail: params.userEmail } : {}),
+    // If your schema requires userName, always include a non-empty fallback.
+    userName: userNameToUse,
     ...(params.userId ? { userId: params.userId } : {}),
   }
 
@@ -203,20 +208,39 @@ async function createPurchaseDocument(params: {
     )
   } catch (err: any) {
     const e: AppwriteError = err
+    if (e?.code === 401 || e?.code === 403 || (e?.message || '').toLowerCase().includes('not authorized')) {
+      throw new Error(
+        'Appwrite permission denied creating purchase. In Appwrite Console → Databases → sh-purchases → Settings, enable Document Security and grant Create permission for authenticated users (Role.users) or the current user.'
+      )
+    }
     // If schema doesn't include userId/userEmail, retry with smaller payloads so required fields still persist.
     if (isUnknownAttributeError(e)) {
-      // Keep userEmail in the base when provided (your schema may require it).
+      // Keep userEmail/userName in the base (your schema may require them).
       const base: Record<string, any> = {
         purchaseDate: params.purchaseDateIso,
         purchaseType,
         item,
         ...(params.userEmail ? { userEmail: params.userEmail } : {}),
+        userName: userNameToUse,
       }
 
-      // Try dropping userId first; only drop userEmail as a last resort.
+      // Prefer dropping userId first; only drop userName/userEmail if Appwrite says they're unknown attributes.
+      const msg = (e?.message || '').toLowerCase()
+      const unknownUserName =
+        (msg.includes('unknown attribute') || msg.includes('attribute not found in schema')) && msg.includes('username')
+      const unknownUserEmail =
+        (msg.includes('unknown attribute') || msg.includes('attribute not found in schema')) && msg.includes('useremail')
+
+      const baseNoUserName = { ...base }
+      if (unknownUserName) delete (baseNoUserName as any).userName
+
+      const baseNoUserEmail = { ...baseNoUserName }
+      if (unknownUserEmail) delete (baseNoUserEmail as any).userEmail
+
       const candidates: Array<Record<string, any>> = []
-      if (params.userId) candidates.push({ ...base, userId: params.userId })
-      candidates.push(base)
+      if (params.userId) candidates.push({ ...baseNoUserName, userId: params.userId })
+      candidates.push(baseNoUserName)
+      candidates.push(baseNoUserEmail)
       candidates.push({ purchaseDate: params.purchaseDateIso, purchaseType, item }) // last resort: no user fields
 
       for (const candidate of candidates) {
@@ -270,6 +294,7 @@ export async function checkoutCartToAppwrite(params: {
         purchaseDateIso,
         userId: params.userId,
         userEmail: params.userEmail,
+        userName: params.userName,
       })
     }
   }

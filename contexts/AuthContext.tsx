@@ -2,7 +2,21 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { client, account, databases, ID } from '@/lib/appwrite'
-import { Query } from 'appwrite'
+import { Permission, Query, Role } from 'appwrite'
+
+function sanitizeId(value: string) {
+  return (value || '').replace(/[^a-zA-Z0-9_]/g, '_')
+}
+
+function permissionsForUser(userId?: string) {
+  if (!userId) return undefined
+  const safe = sanitizeId(userId)
+  return [
+    Permission.read(Role.user(safe)),
+    Permission.update(Role.user(safe)),
+    Permission.delete(Role.user(safe)),
+  ]
+}
 
 interface User {
   email: string
@@ -409,7 +423,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
-      const appointmentsCollectionId = 'appointments' // Appointments table collection ID
+      const appointmentsCollectionId =
+        process.env.NEXT_PUBLIC_APPWRITE_APPOINTMENTS_COLLECTION_ID || 'appointments' // Appointments table collection ID
 
       if (!databaseId) {
         return { success: false, error: 'Database not configured (NEXT_PUBLIC_APPWRITE_DATABASE_ID)' }
@@ -456,17 +471,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         consentForm, // Required boolean
         // If your schema requires this attribute, keep it present from day 1.
         rescheduleRequested: false,
+        // Many schemas require `status` (string). Keep it present for all create attempts.
+        status: 'scheduled',
       }
 
       // Preferred: store userId + status so profile can query and actions can update reliably.
       const fullPayload: Record<string, any> = {
         ...basePayload,
         userId: user.$id,
-        status: 'scheduled',
       }
 
       const tryCreate = async (payload: Record<string, any>) =>
-        await databases.createDocument(databaseId, appointmentsCollectionId, ID.unique(), payload)
+        await databases.createDocument(
+          databaseId,
+          appointmentsCollectionId,
+          ID.unique(),
+          payload,
+          permissionsForUser(user.$id)
+        )
 
       try {
         await tryCreate(fullPayload)
@@ -499,10 +521,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Retry by dropping only what the schema doesn't support.
         const candidates: Array<Record<string, any>> = []
-        if (unknownUserId && !unknownStatus) candidates.push({ ...basePayload, status: 'scheduled' })
-        if (!unknownUserId && unknownStatus) candidates.push({ ...basePayload, userId: user.$id })
-        if (unknownUserId && unknownStatus) candidates.push(basePayload)
-        // If error wasn't about unknown fields, still try basePayload once before failing.
+        const baseNoStatus = { ...basePayload }
+        delete (baseNoStatus as any).status
+
+        // If schema rejects userId, try without it.
+        if (unknownUserId && !unknownStatus) candidates.push(basePayload)
+
+        // If schema rejects status, try without it (and keep userId if allowed).
+        if (!unknownUserId && unknownStatus) candidates.push({ ...baseNoStatus, userId: user.$id })
+
+        // If schema rejects both, try the minimal base without both.
+        if (unknownUserId && unknownStatus) candidates.push(baseNoStatus)
+
+        // If error wasn't about unknown fields, still try the base payload once before failing.
         candidates.push(basePayload)
 
         let lastErr: any = e
@@ -564,7 +595,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
-      const appointmentsCollectionId = 'appointments' // Appointments table collection ID
+      const appointmentsCollectionId =
+        process.env.NEXT_PUBLIC_APPWRITE_APPOINTMENTS_COLLECTION_ID || 'appointments' // Appointments table collection ID
 
       if (!databaseId) {
         return []
@@ -645,7 +677,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (!user?.$id) return { success: false, error: 'User not logged in' }
       const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
-      const appointmentsCollectionId = 'appointments'
+      const appointmentsCollectionId =
+        process.env.NEXT_PUBLIC_APPWRITE_APPOINTMENTS_COLLECTION_ID || 'appointments'
       if (!databaseId) return { success: false, error: 'Database not configured (NEXT_PUBLIC_APPWRITE_DATABASE_ID)' }
 
       const nowIso = new Date().toISOString()
@@ -686,7 +719,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (!user?.$id) return { success: false, error: 'User not logged in' }
       const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
-      const appointmentsCollectionId = 'appointments'
+      const appointmentsCollectionId =
+        process.env.NEXT_PUBLIC_APPWRITE_APPOINTMENTS_COLLECTION_ID || 'appointments'
       if (!databaseId) return { success: false, error: 'Database not configured (NEXT_PUBLIC_APPWRITE_DATABASE_ID)' }
 
       const requestedDateIso = new Date(`${newDate}T${newTime}:00`).toISOString()
@@ -744,7 +778,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (!user?.$id) return { success: false, error: 'User not logged in' }
       const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID
-      const appointmentsCollectionId = 'appointments'
+      const appointmentsCollectionId =
+        process.env.NEXT_PUBLIC_APPWRITE_APPOINTMENTS_COLLECTION_ID || 'appointments'
       if (!databaseId) return { success: false, error: 'Database not configured (NEXT_PUBLIC_APPWRITE_DATABASE_ID)' }
 
       await databases.deleteDocument(databaseId, appointmentsCollectionId, bookingId)
