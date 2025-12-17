@@ -107,3 +107,4 @@ fetch('https://cloud.appwrite.io/v1/account', {
 This will show us the exact error message from Appwrite.
 
 
+

@@ -18,6 +18,61 @@ function permissionsForUser(userId?: string) {
   ]
 }
 
+// UI helper: older bookings (or strict schemas) may have stored serviceName truncated.
+// We expand common mock service titles so Profile/booking views can show the full title.
+const KNOWN_SERVICES: Array<{ name: string; descriptionPrefix: string }> = [
+  {
+    name: 'Professional Photography',
+    descriptionPrefix: 'Professional photo shoot session for portraits, events, or product photography.',
+  },
+  {
+    name: 'Home Cleaning Service',
+    descriptionPrefix:
+      'Deep cleaning service for your home. Includes all rooms, kitchen, bathrooms, and common areas.',
+  },
+  {
+    name: 'Personal Training Session',
+    descriptionPrefix:
+      'One-on-one personal training session tailored to your fitness goals. Includes workout plan and nutrition advice.',
+  },
+  {
+    name: 'Web Development Consultation',
+    descriptionPrefix:
+      'Expert consultation for your web development needs. Includes code review, architecture planning, and best practices.',
+  },
+  {
+    name: 'Massage Therapy',
+    descriptionPrefix: 'Relaxing full-body massage therapy session. Helps relieve stress, tension, and muscle soreness.',
+  },
+  {
+    name: 'Tutoring Session',
+    descriptionPrefix:
+      'Personalized tutoring session for students. Covers various subjects including math, science, and languages.',
+  },
+]
+
+function expandKnownServiceName(serviceName?: string, serviceDescription?: string) {
+  const name = (serviceName || '').trim()
+  if (!name) return ''
+
+  // If it's already the full known name, keep it.
+  const exact = KNOWN_SERVICES.find((s) => s.name === name)
+  if (exact) return exact.name
+
+  // If stored name is a prefix of a known title (common when truncated), expand it.
+  const prefixMatch = KNOWN_SERVICES.find((s) => s.name.startsWith(name))
+  if (prefixMatch) return prefixMatch.name
+
+  // If description matches, use that mapping.
+  const desc = (serviceDescription || '').trim()
+  if (desc) {
+    const descMatch = KNOWN_SERVICES.find((s) => desc.startsWith(s.descriptionPrefix))
+    if (descMatch) return descMatch.name
+  }
+
+  return name
+}
+
 interface User {
   email: string
   name?: string
@@ -437,9 +492,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Combine date and time into ISO datetime string
       const bookingDateTime = new Date(`${bookingDate}T${bookingTime}:00`).toISOString()
 
-      // Keep backwards compatibility with older schema constraints, but also store full titles when possible.
-      const truncatedServiceName = serviceName.substring(0, 20)
+      // Prefer storing the full service title (better UX in profile/appointments).
+      // If your Appwrite schema still restricts serviceName to ~20 chars, we fall back gracefully below.
       const fullServiceName = (serviceName || '').substring(0, 100)
+      const shortServiceName = fullServiceName.substring(0, 20)
       // Truncate serviceDescription to 100 characters (database constraint)
       const truncatedServiceDescription = (serviceDescription || '').substring(0, 100)
 
@@ -450,7 +506,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userEmail: session.email || user.email,
         userId: user.$id,
         bookingDateTime,
-        serviceName: truncatedServiceName,
+        serviceName: fullServiceName,
         serviceDescription: truncatedServiceDescription
       })
 
@@ -461,8 +517,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         city: city || null,
         age: age ? parseInt(age.toString()) : null,
         // Appointment details
-        serviceName: truncatedServiceName, // Kept for compatibility with old schema
-        serviceNameFull: fullServiceName, // Prefer displaying this in UI when schema supports it
+        serviceName: fullServiceName, // Prefer full title for display
+        serviceNameFull: fullServiceName, // Optional: for schemas that support a separate full field
         serviceDescription: truncatedServiceDescription, // Truncated to 100 chars max (database constraint)
         servicePrice,
         serviceDuration, // Integer (duration in minutes)
@@ -494,6 +550,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await tryCreate(fullPayload)
       } catch (e: any) {
         const msg = (e?.message || '').toLowerCase()
+
+        // If the schema enforces a short max-length for serviceName, retry with a shortened value.
+        const serviceNameLengthIssue =
+          msg.includes('servicename') && (msg.includes('length') || msg.includes('size') || msg.includes('max'))
+        if (serviceNameLengthIssue) {
+          const baseShort = { ...basePayload, serviceName: shortServiceName }
+          const fullShort = { ...fullPayload, serviceName: shortServiceName }
+          try {
+            await tryCreate(fullShort)
+            return { success: true, emailSent: true }
+          } catch (e2: any) {
+            const msg2 = (e2?.message || '').toLowerCase()
+            // If serviceNameFull also doesn't exist, drop it and retry once more.
+            if (
+              (msg2.includes('unknown attribute') || msg2.includes('attribute not found in schema')) &&
+              msg2.includes('servicenamefull')
+            ) {
+              delete (baseShort as any).serviceNameFull
+              delete (fullShort as any).serviceNameFull
+              await tryCreate(fullShort)
+              return { success: true, emailSent: true }
+            }
+          }
+          // continue into broader fallback below if still failing
+        }
 
         // If schema doesn't have serviceNameFull, drop it first.
         if ((msg.includes('unknown attribute') || msg.includes('attribute not found in schema')) && msg.includes('servicenamefull')) {
@@ -558,7 +639,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({
             to: session.email || user.email,
             userName: session.name || user.name,
-            serviceName: truncatedServiceName,
+            serviceName: fullServiceName,
             bookingDateIso: bookingDateTime,
             bookingTime,
             servicePrice,
@@ -656,7 +737,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: doc.email,
         city: doc.city,
         age: doc.age,
-        serviceName: doc.serviceNameFull || doc.serviceName,
+        serviceName: doc.serviceNameFull || expandKnownServiceName(doc.serviceName, doc.serviceDescription),
         serviceDescription: doc.serviceDescription,
         servicePrice: doc.servicePrice,
         serviceDuration: doc.serviceDuration,

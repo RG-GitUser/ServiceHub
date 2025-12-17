@@ -9,6 +9,11 @@ export const metadata: Metadata = {
   description: 'Modern platform for booking services and browsing products',
 }
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+}
+
 export default function RootLayout({
   children,
 }: {
@@ -16,7 +21,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
+      <body className="min-h-screen overflow-x-hidden antialiased">
         <AuthProvider>
           <CartProvider>
             {children}

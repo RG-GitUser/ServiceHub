@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-import { useCart } from '@/contexts/CartContext'
 import { Modal } from '@/components/Modal'
+import { AppNav } from '@/components/AppNav'
 
 interface Service {
   id: number
@@ -83,8 +82,7 @@ const mockServices: Service[] = [
 
 export default function ServicesPage() {
   const router = useRouter()
-  const { user, signOut, loading, createBooking } = useAuth()
-  const { getTotalItems } = useCart()
+  const { user, loading, createBooking } = useAuth()
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [bookingDate, setBookingDate] = useState('')
@@ -92,7 +90,6 @@ export default function ServicesPage() {
   const [city, setCity] = useState('')
   const [age, setAge] = useState('')
   const [consentForm, setConsentForm] = useState(false)
-  const totalItems = getTotalItems()
 
   useEffect(() => {
     if (!loading && !user) {
@@ -164,79 +161,7 @@ export default function ServicesPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-primary-100">
-      {/* Navigation */}
-      <nav className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center h-16">
-            <div className="flex-1 flex items-center">
-              <Link href="/" className="flex items-center -ml-2">
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent">
-                  ServiceHub
-                </h1>
-              </Link>
-            </div>
-
-            <div className="hidden md:flex flex-1 items-center justify-center space-x-4">
-              <Link
-                href="/products"
-                className="text-gray-700 hover:text-primary-600 px-4 py-2 rounded-lg hover:bg-primary-50 transition-colors"
-              >
-                Browse Products
-              </Link>
-              <Link
-                href="/services"
-                className="text-primary-600 font-semibold px-4 py-2 rounded-lg bg-primary-50"
-              >
-                Book Services
-              </Link>
-            </div>
-
-            <div className="flex-1 flex items-center justify-end space-x-4 -mr-2 flex-nowrap">
-              <div className="flex items-center space-x-2 md:hidden">
-                <Link
-                  href="/products"
-                  className="text-gray-700 hover:text-primary-600 px-3 py-2 rounded-lg hover:bg-primary-50 transition-colors"
-                >
-                  Products
-                </Link>
-                <Link
-                  href="/services"
-                  className="text-primary-600 font-semibold px-3 py-2 rounded-lg bg-primary-50"
-                >
-                  Services
-                </Link>
-              </div>
-
-              <Link
-                href="/profile"
-                className="text-gray-700 hover:text-primary-600 px-4 py-2 rounded-lg hover:bg-primary-50 transition-colors"
-              >
-                Profile
-              </Link>
-              <Link
-                href="/cart"
-                className="relative text-gray-700 hover:text-primary-600 px-4 py-2 rounded-lg hover:bg-primary-50 transition-colors"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                {totalItems > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                    {totalItems}
-                  </span>
-                )}
-              </Link>
-              <span className="hidden lg:inline text-gray-600">Welcome, {user.name || user.email}</span>
-              <button
-                onClick={signOut}
-                className="bg-primary-600 text-white h-11 px-3 rounded-lg hover:bg-primary-700 transition-colors flex items-center justify-center font-semibold whitespace-nowrap"
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <AppNav />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="mb-8">
@@ -324,7 +249,7 @@ export default function ServicesPage() {
         description="Choose a date/time and confirm your booking."
         maxWidthClassName="max-w-md"
         footer={
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-4">
             <button
               type="button"
               onClick={() => setSelectedService(null)}
@@ -347,7 +272,7 @@ export default function ServicesPage() {
           <div className="space-y-4">
               <div>
                 <p className="text-black mb-2">{selectedService.description}</p>
-                <div className="flex items-center justify-between text-sm text-black">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-sm text-black">
                   <span>Duration: {selectedService.duration}</span>
                   <span className="text-lg font-bold text-primary-600">${selectedService.price}</span>
                 </div>
