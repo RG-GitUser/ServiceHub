@@ -552,8 +552,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const msg = (e?.message || '').toLowerCase()
 
         // If the schema enforces a short max-length for serviceName, retry with a shortened value.
+        // Check for various error messages about serviceName length/size constraints
         const serviceNameLengthIssue =
-          msg.includes('servicename') && (msg.includes('length') || msg.includes('size') || msg.includes('max'))
+          msg.includes('servicename') &&
+          (msg.includes('length') ||
+            msg.includes('size') ||
+            msg.includes('max') ||
+            msg.includes('longer') ||
+            msg.includes('chars') ||
+            msg.includes('characters') ||
+            msg.includes('invalid type') ||
+            /\d+\s*(char|chars|character|characters)/.test(msg))
         if (serviceNameLengthIssue) {
           const baseShort = { ...basePayload, serviceName: shortServiceName }
           const fullShort = { ...fullPayload, serviceName: shortServiceName }
@@ -571,6 +580,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               delete (fullShort as any).serviceNameFull
               await tryCreate(fullShort)
               return { success: true, emailSent: true }
+            }
+            // If still failing with serviceName length issue, try without serviceNameFull
+            const stillServiceNameIssue =
+              msg2.includes('servicename') &&
+              (msg2.includes('length') ||
+                msg2.includes('size') ||
+                msg2.includes('max') ||
+                msg2.includes('longer') ||
+                msg2.includes('chars') ||
+                msg2.includes('characters') ||
+                msg2.includes('invalid type'))
+            if (stillServiceNameIssue) {
+              delete (baseShort as any).serviceNameFull
+              delete (fullShort as any).serviceNameFull
+              try {
+                await tryCreate(fullShort)
+                return { success: true, emailSent: true }
+              } catch {
+                // Continue to broader fallback below
+              }
             }
           }
           // continue into broader fallback below if still failing
@@ -624,7 +653,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             lastErr = null
             break
           } catch (e2: any) {
-            lastErr = e2
+            const msg2 = (e2?.message || '').toLowerCase()
+            // If we're still hitting serviceName length issues in fallback, try with short name
+            const stillServiceNameIssue =
+              msg2.includes('servicename') &&
+              (msg2.includes('length') ||
+                msg2.includes('size') ||
+                msg2.includes('max') ||
+                msg2.includes('longer') ||
+                msg2.includes('chars') ||
+                msg2.includes('characters') ||
+                msg2.includes('invalid type') ||
+                /\d+\s*(char|chars|character|characters)/.test(msg2))
+            if (stillServiceNameIssue && c.serviceName && c.serviceName.length > 20) {
+              // Try one more time with shortened serviceName
+              const cShort = { ...c, serviceName: shortServiceName }
+              delete (cShort as any).serviceNameFull
+              try {
+                await tryCreate(cShort)
+                lastErr = null
+                break
+              } catch {
+                lastErr = e2
+              }
+            } else {
+              lastErr = e2
+            }
           }
         }
         if (lastErr) throw lastErr

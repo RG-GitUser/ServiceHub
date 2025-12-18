@@ -79,10 +79,17 @@ Total: ${formatMoney(body.total)}
     const info = await sendEmailSmtp({ to: body.to, subject, text, html })
     return NextResponse.json({ ok: true, id: info.messageId })
   } catch (e: any) {
-    console.error('order-confirmation email error:', e)
     const msg = e?.message || 'Unknown error'
-    const status = msg.startsWith('Missing server env var:') ? 501 : 500
-    return NextResponse.json({ ok: false, error: msg }, { status })
+    // If SMTP is not configured, return a graceful response (not an error)
+    if (msg.startsWith('Missing server env var: SMTP')) {
+      console.warn('SMTP not configured. Email sending skipped:', msg)
+      return NextResponse.json({ 
+        ok: false, 
+        error: 'Email not configured (SMTP settings missing). Order was saved successfully.' 
+      }, { status: 501 })
+    }
+    console.error('order-confirmation email error:', e)
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 })
   }
 }
 

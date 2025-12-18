@@ -52,10 +52,25 @@ Price: $${Number(body.servicePrice || 0).toFixed(2)}
     const info = await sendEmailSmtp({ to: body.to, subject, text, html })
     return NextResponse.json({ ok: true, id: info.messageId })
   } catch (e: any) {
-    console.error('booking-confirmation email error:', e)
     const msg = e?.message || 'Unknown error'
-    const status = msg.startsWith('Missing server env var:') ? 501 : 500
-    return NextResponse.json({ ok: false, error: msg }, { status })
+    // Handle email configuration errors gracefully
+    if (msg.startsWith('Missing server env var: SMTP') || msg.startsWith('Missing server env var: RESEND')) {
+      console.warn('Email not configured. Email sending skipped:', msg)
+      return NextResponse.json({ 
+        ok: false, 
+        error: 'Email not configured. Booking was saved successfully.' 
+      }, { status: 501 })
+    }
+    // Handle Resend domain verification errors
+    if (msg.includes('domain is not verified') || msg.includes('not verified')) {
+      console.warn('Resend domain not verified:', msg)
+      return NextResponse.json({ 
+        ok: false, 
+        error: 'Email domain not verified. Use onboarding@resend.dev for testing or verify your domain. Booking was saved successfully.' 
+      }, { status: 501 })
+    }
+    console.error('booking-confirmation email error:', e)
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 })
   }
 }
 
